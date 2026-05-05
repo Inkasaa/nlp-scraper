@@ -1,0 +1,5 @@
+# Essential libraries for scraping
+requests
+beautifulsoup4
+pandas
+lxml
