@@ -5,18 +5,147 @@ Purpose: Script for scraping news articles from the web.
 
 import requests
 from bs4 import BeautifulSoup
+import json
+import re
+
+import requests
+from bs4 import BeautifulSoup
+
+BASE_URL = "https://yle.fi"
+
+START_PAGES = [
+   # "https://yle.fi/news",
+    "https://yle.fi/uutiset",
+    "https://yle.fi/kulttuuri",
+    "https://yle.fi/urheilu",
+    "https://yle.fi/uutiset/paikallisuutiset",
+    "https://yle.fi/t/18-220306/fi", # Politiikka 
+    "https://yle.fi/t/18-204933/fi", # Talous
+    "https://yle.fi/t/18-186623/fi", # MOT
+    "https://yle.fi/t/18-215452/fi", # Luonto
+    "https://yle.fi/t/18-212923/fi", # Tiede
+    "https://yle.fi/t/18-34837/fi", # Kotimaa
+    "https://yle.fi/t/18-34953/fi", # Ulkomaat
+
+]
 
 
-def get_article_links():
-    """
-    Scrape BBC News front page and return up to 100 unique, clean article URLs.
-    """
-    url = "https://www.bbc.com/news"
+def get_yle_article_links(limit=300):
+    unique_urls = set()
+
+    for page_url in START_PAGES:
+        try:
+            response = requests.get(page_url, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"Error fetching {page_url}: {e}")
+            continue
+
+        soup = BeautifulSoup(response.text, "lxml")
+
+        for a in soup.find_all("a"):
+            href = a.get("href")
+
+            if not href:
+                continue
+
+            # Convert relative → absolute
+            if href.startswith("/"):
+                href = BASE_URL + href
+
+            # Filtering rules:
+            if (
+                href.startswith("https://yle.fi")
+                and "/a/" in href
+                and "?" not in href
+                and "#" not in href
+            ):
+                unique_urls.add(href)
+
+            if len(unique_urls) >= limit:
+                print(f"Found {len(unique_urls)} unique YLE article links")
+                return list(unique_urls)
+            
+    print(f"Found {len(unique_urls)} unique YLE article links")
+    return list(unique_urls)
+
+def scrape_yle_article(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
     except requests.RequestException as e:
-        print(f"Error fetching BBC News: {e}")
+        print(f"Error fetching article: {e}")
+        return None
+
+    soup = BeautifulSoup(response.text, "lxml")
+
+    # Find script containing the initial state
+    scripts = soup.find_all("script")
+
+    target_script = None
+    for s in scripts:
+        if s.string and "window.__INITIAL__STATE__" in s.string:
+            target_script = s.string
+            break
+
+    if not target_script:
+        print("No data script found")
+        return None
+
+    # Extract JSON safely (remove JS prefix)
+    start = target_script.find("{")
+    end = target_script.rfind("}")
+
+    if start == -1 or end == -1:
+        print("Could not locate JSON boundaries")
+        return None
+
+    json_text = target_script[start:end + 1]
+
+    try:
+        data = json.loads(json_text)
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {e}")
+        return None
+
+    # Navigate safely through structure
+    try:
+        article = data["pageData"]["article"]
+
+        headline = article.get("headline", {}).get("full", "")
+        date = article.get("datePublished", "")
+
+        paragraphs = []
+        for item in article.get("content", []):
+            if item.get("type") == "text":
+                paragraphs.append(item.get("text", ""))
+
+        body = " ".join(paragraphs)
+
+        return {
+            "url": url,
+            "headline": headline,
+            "date": date,
+            "body": body
+        }
+
+    except Exception as e:
+        print(f"Error parsing article structure: {e}")
+        return None
+
+def get_aland_article_links():
+    """
+    Scrape Ålands radio front page and return up to 100 (probably max 10) unique, clean article URLs.
+    """
+
+    BASE_URL = "https://www.alandsradio.ax"
+    url = "https://www.alandsradio.ax/nyheter/"
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching news: {e}")
         return []
 
     soup = BeautifulSoup(response.text, "lxml")
@@ -24,31 +153,35 @@ def get_article_links():
     article_urls = set()
 
     for link in links:
-        href = link["href"]
-        # Skip links with '#' or '?', or unwanted sections
-        if (
-            "#" in href or
-            "?" in href or
-            href.startswith("/news/topics/") or
-            href.startswith("/news/live/")
-        ):
+
+        href = link.get("href")
+        if not href:
             continue
-        # Only keep /news/ articles
-        if href.startswith("/news/") and not href.startswith("/news/av/"):
-            full_url = f"https://www.bbc.com{href}"
-            article_urls.add(full_url)
-        elif href.startswith("https://www.bbc.com/news/") and not href.startswith("https://www.bbc.com/news/av/"):
+
+        # Convert relative URLs to absolute
+        if href.startswith("/"):
+            href = BASE_URL + href
+
+        # --- FILTERING RULES ---
+        if (
+            href.startswith(BASE_URL)
+            and "/nyheter/" in href
+            and "?" not in href
+            and "#" not in href
+        ):
             article_urls.add(href)
+  
+        
         if len(article_urls) >= 100:
             break
 
-    print(f"Found {len(article_urls)} unique article links")
+    print(f"Found {len(article_urls)} unique Ålands radio article links")
     return list(article_urls)
 
 
 def scrape_article(url):
     """
-    Visit a BBC article URL and extract the headline and body text.
+    Visit an article URL and extract the headline and body text.
     Returns a dict with 'url', 'headline', 'body', or None if extraction fails.
     """
     try:
@@ -81,15 +214,30 @@ def scrape_article(url):
 
 
 def main():
-    # Get up to 100 unique BBC article URLs
-    article_urls = get_article_links()
+   
+    aland_urls = get_aland_article_links()
+    yle_urls = get_yle_article_links()
+
+    print("Testing Ålands radio article scraping:")
     # For testing, scrape only 5 articles
-    for i, url in enumerate(article_urls[:5]):
+    for i, url in enumerate(aland_urls[:5]):
         print(f"\nScraping article {i+1}: {url}")
         article_data = scrape_article(url)
         if article_data:
-            print(f"HEADLINE: {article_data['headline']}")
-            print(f"BODY (first 200 chars): {article_data['body'][:200]}...")
+            print(f"Åland HEADLINE: {article_data['headline']}")
+            print(f"Åland BODY (first 200 chars): {article_data['body'][:200]}...")
+        else:
+            print("Failed to extract article.")
+            
+            print("Testing Yle article scraping:")
+    # For testing, scrape only 5 articles
+
+    for i, url in enumerate(yle_urls[:25]):
+        print(f"\nScraping article {i+1}: {url}")
+        article_data = scrape_yle_article(url)
+        if article_data:
+            print(f"YLE HEADLINE: {article_data['headline']}")
+            print(f"YLE BODY (first 200 chars): {article_data['body'][:200]}...")
         else:
             print("Failed to extract article.")
 
