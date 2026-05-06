@@ -7,14 +7,59 @@ import requests
 from bs4 import BeautifulSoup
 import json
 import re
+import pandas as pd
+import uuid
+from datetime import datetime
 
-import requests
-from bs4 import BeautifulSoup
+
+def build_dataset(target_size=300):
+    all_articles = []
+    seen_urls = set()
+
+    print("Collecting URLs...")
+
+    aland_urls = get_aland_article_links()
+    yle_urls = get_yle_article_links(limit=300)
+
+    all_urls = aland_urls + yle_urls
+
+    print(f"Total URLs collected: {len(all_urls)}")
+
+    for i, url in enumerate(all_urls):
+        if url in seen_urls:
+            continue
+
+        print(f"\n[{len(all_articles)+1}] Scraping: {url}")
+
+        # Choose correct scraper
+        if "yle.fi" in url:
+            data = scrape_yle_article(url)
+        else:
+            data = scrape_article(url)
+
+        if not data:
+            print("Failed → skipping")
+            continue
+
+        # Add metadata
+        data["id"] = str(uuid.uuid4())
+        data["scraped_date"] = datetime.now().strftime("%Y-%m-%d")
+
+        all_articles.append(data)
+        seen_urls.add(url)
+
+        # Stop when enough data
+        if len(all_articles) >= target_size:
+            break
+
+    print(f"\nCollected {len(all_articles)} articles")
+
+    return all_articles
 
 BASE_URL = "https://yle.fi"
 
 START_PAGES = [
-   # "https://yle.fi/news",
+   #"https://yle.fi/tuoreimmat",
     "https://yle.fi/uutiset",
     "https://yle.fi/kulttuuri",
     "https://yle.fi/urheilu",
@@ -212,34 +257,20 @@ def scrape_article(url):
         "body": body
     }
 
+def save_dataset(articles):
+    df = pd.DataFrame(articles)
+
+    # Reorder columns nicely
+    df = df[["id", "url", "scraped_date", "headline", "body"]]
+
+    df.to_csv("data/raw_articles.csv", index=False)
+
+    print("Dataset saved to data/raw_articles.csv")
+
 
 def main():
-   
-    aland_urls = get_aland_article_links()
-    yle_urls = get_yle_article_links()
-
-    print("Testing Ålands radio article scraping:")
-    # For testing, scrape only 5 articles
-    for i, url in enumerate(aland_urls[:5]):
-        print(f"\nScraping article {i+1}: {url}")
-        article_data = scrape_article(url)
-        if article_data:
-            print(f"Åland HEADLINE: {article_data['headline']}")
-            print(f"Åland BODY (first 200 chars): {article_data['body'][:200]}...")
-        else:
-            print("Failed to extract article.")
-            
-            print("Testing Yle article scraping:")
-    # For testing, scrape only 5 articles
-
-    for i, url in enumerate(yle_urls[:25]):
-        print(f"\nScraping article {i+1}: {url}")
-        article_data = scrape_yle_article(url)
-        if article_data:
-            print(f"YLE HEADLINE: {article_data['headline']}")
-            print(f"YLE BODY (first 200 chars): {article_data['body'][:200]}...")
-        else:
-            print("Failed to extract article.")
+    articles = build_dataset(target_size=300)
+    save_dataset(articles)
 
 
 if __name__ == "__main__":
