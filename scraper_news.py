@@ -12,14 +12,14 @@ import uuid
 from datetime import datetime
 
 
-def build_dataset(target_size=300):
+def build_dataset(target_size=10):
     all_articles = []
     seen_urls = set()
 
     print("Collecting URLs...")
 
     aland_urls = get_aland_article_links()
-    yle_urls = get_yle_article_links(limit=300)
+    yle_urls = get_yle_article_links(limit=10)
 
     all_urls = aland_urls + yle_urls
 
