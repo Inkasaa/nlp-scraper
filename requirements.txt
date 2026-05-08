@@ -1,5 +1,10 @@
-# Essential libraries for scraping
+# Essential libraries for scraping and NLP pipeline
 requests
 beautifulsoup4
 pandas
 lxml
+scikit-learn
+nltk
+matplotlib
+joblib
+spacy

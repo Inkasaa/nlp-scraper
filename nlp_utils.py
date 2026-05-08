@@ -4,11 +4,9 @@ import spacy
 
 STOPWORDS = set(
     stopwords.words('finnish') +
-    stopwords.words('swedish') 
-  #  stopwords.words('english')
+    stopwords.words('swedish') +
+    stopwords.words('english')
 )
-
-import spacy
 
 nlp_fi = spacy.load("fi_core_news_sm")
 nlp_sv = spacy.load("sv_core_news_sm")

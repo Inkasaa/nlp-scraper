@@ -42,8 +42,8 @@ def build_dataset(target_size=10):
             continue
 
         # Add metadata
-        data["id"] = str(uuid.uuid4())
-        data["scraped_date"] = datetime.now().strftime("%Y-%m-%d")
+        data["scraped_date"] = datetime.now()
+        data["id"] = len(all_articles)
 
         all_articles.append(data)
         seen_urls.add(url)
@@ -259,6 +259,8 @@ def scrape_article(url):
 
 def save_dataset(articles):
     df = pd.DataFrame(articles)
+
+    df["scraped_date"] = pd.to_datetime(df["scraped_date"])
 
     # Reorder columns nicely
     df = df[["id", "url", "scraped_date", "headline", "body"]]
